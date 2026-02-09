@@ -9,7 +9,7 @@
 ## DEACTIVE VENV
 `deactivate`
 
-## DEACTIVE VENV
+## INSTALL DEPENDENCIES
 `pip install -r requirements.txt`
 
 ## RUNNING APP
