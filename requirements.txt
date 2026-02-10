@@ -1,3 +1,4 @@
 PyPDF2
 pillow
 streamlit
+pdf2docx 
