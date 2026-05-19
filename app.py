@@ -8,6 +8,8 @@ st.subheader("Choose your tool")
 col1, col2 = st.columns(2)
 col3, col4 = st.columns(2)
 col5, col6 = st.columns(2)
+col7, col8 = st.columns(2)
+col9, col10 = st.columns(2)
 
 st.markdown("""
 <style>
@@ -40,5 +42,17 @@ with col5:
         st.switch_page("pages/word.py")
 
 with col6:
-    if st.button("📄 PDF → -", use_container_width=True):
-        st.switch_page("pages/word.py")
+    if st.button("📄 PDF → Word + OCR", use_container_width=True):
+        st.switch_page("pages/word_ocr.py")
+
+with col7:
+    if st.button("📄 PDF Metadata", use_container_width=True):
+        st.switch_page("pages/metadata.py")
+        
+with col8:
+    if st.button("📄 Word → PDF + metadata", use_container_width=True):
+        st.switch_page("pages/word_metadata.py")
+        
+with col9:
+    if st.button("📄 PDF Unlock", use_container_width=True):
+        st.switch_page("pages/unlock.py")

@@ -16,8 +16,10 @@
 `deactivate`
 
 ## INSTALL DEPENDENCIES
-`pip install -r requirements.txt`
 `sudo apt install ghostscript`
+`sudo apt install tesseract-ocr poppler-utils`
+`sudo apt install tesseract-ocr-ind`
+`pip install -r requirements.txt`
 
 ## RUNNING APP
 `streamlit run app.py --server.address 0.0.0.0 --server.port 8502`

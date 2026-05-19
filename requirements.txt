@@ -2,3 +2,9 @@ PyPDF2
 pillow
 streamlit
 pdf2docx 
+pytesseract
+pillow
+python-docx
+pdf2image
+opencv-python
+numpy 
