@@ -1,0 +1,13 @@
+services:
+  pdf-tools:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: pdf-tools
+
+    ports:
+      - "8502:8502"
+
+    environment:
+      - TZ=Asia/Jakarta

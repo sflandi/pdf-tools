@@ -28,3 +28,14 @@
 `py --list // for check version python`
 
 `pip cache purge`
+
+
+## USING DOCKER
+`docker build -t pdf-tools .`
+
+## RUNNING AFTER BUILD CONTAINER
+`docker run -d --name pdf-tools -p 8502:8502 pdf-tools`
+
+## USING DOCKER COMPOSE
+
+
