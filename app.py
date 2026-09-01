@@ -34,25 +34,30 @@ with col3:
         st.switch_page("pages/compress.py")
 
 with col4:
+    if st.button("🗜 PDF Compress PyMuPDF", use_container_width=True):
+        st.switch_page("pages/compress_pymupdf.py")
+
+with col5:
     if st.button("🖼 Image → PDF", use_container_width=True):
         st.switch_page("pages/image.py")
 
-with col5:
+with col6:
     if st.button("📄 PDF → Word", use_container_width=True):
         st.switch_page("pages/word.py")
 
-with col6:
+with col7:
     if st.button("📄 PDF → Word + OCR", use_container_width=True):
         st.switch_page("pages/word_ocr.py")
 
-with col7:
+with col8:
     if st.button("📄 PDF Metadata", use_container_width=True):
         st.switch_page("pages/metadata.py")
         
-with col8:
+with col9:
     if st.button("📄 Word → PDF + metadata", use_container_width=True):
         st.switch_page("pages/word_metadata.py")
         
-with col9:
+with col10:
     if st.button("📄 PDF Unlock", use_container_width=True):
         st.switch_page("pages/unlock.py")
+        

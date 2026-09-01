@@ -1,6 +1,7 @@
 python -m venv venv-pdf-tools
 
-.\venv-pdf-tools\Scripts\activate
+.\venv-pdf-tools\Scripts\activate\
+source venv-pdf-tools/bin/activate
 
 deactivate
 

@@ -7,4 +7,5 @@ pillow
 python-docx
 pdf2image
 opencv-python
-numpy 
+numpy
+pymupdf 
