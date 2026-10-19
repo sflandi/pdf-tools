@@ -1,12 +1,6 @@
-PyPDF2
-pillow
-streamlit
-pdf2docx 
-pytesseract
-pillow
-python-docx
-pdf2image
-opencv-python
-numpy
-pymupdf 
-poppler-utils
+# Tested with (Python 3.12/3.13): pymupdf 1.28.2, streamlit 1.66, pillow 12.3, pdf2docx 0.5.13
+pymupdf>=1.26,<2
+streamlit>=1.50,<2
+pillow>=11
+pdf2docx>=0.5.8
+python-docx>=1.1

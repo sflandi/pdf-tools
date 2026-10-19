@@ -1,65 +1,34 @@
-import streamlit as st
-import tempfile
 import os
-from pdf2docx import Converter
 
-if st.button("⬅ Home"):
-    st.switch_page("app.py")
+import streamlit as st
 
-st.markdown("---")
+from pdftools import core, ui
+from pdftools.ui import t
 
-st.set_page_config(page_title="PDF to Word Converter", page_icon="📄", layout="centered")
-st.title("🗜 PDF to Word")
+ui.header("word_title", "word_caption")
 
-if "processing" not in st.session_state:
-    st.session_state.processing = False
+uploaded = st.file_uploader(t("upload_pdf"), type=["pdf"])
+pages_spec = st.text_input(t("pages_input"), "", placeholder=t("pages_placeholder"))
 
-uploaded_file = st.file_uploader(
-    "Upload PDF file",
-    type=["pdf"],
-    disabled=st.session_state.processing
-)
+if st.button(t("word_button"), type="primary", disabled=not uploaded):
+    with ui.workdir() as wd, st.status(t("converting"), expanded=True) as status:
+        try:
+            src = ui.save_upload(uploaded, wd)
+            doc = core.open_pdf(src)
+            pages = core.parse_pages(pages_spec, doc.page_count)
+            doc.close()
+            out = os.path.join(wd, "result.docx")
+            args = ["pdf2docx", src, out, "--pages", ",".join(map(str, pages))]
+            with ui.heavy_job(status), ui.timed("pdf2docx", pages=len(pages)):
+                ui.run_worker(args, timeout=max(180, 10 * len(pages)))
+            ui.set_result("pdf2docx", uploaded, bytes=ui.read_bytes(out), filename=f"{ui.stem(uploaded)}.docx",
+                          mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            status.update(label=t("done"), state="complete", expanded=False)
+        except Exception as e:
+            status.update(label=t("failed"), state="error")
+            ui.show_error(e, "pdf2docx")
 
-convert_clicked = st.button(
-    "📄 Convert to Word",
-    disabled=st.session_state.processing or not uploaded_file
-)
-
-if convert_clicked:
-  st.session_state.processing = True
-
-  try:
-    with st.spinner("⏳ Converting PDF to Word..."):
-      original_name = os.path.splitext(uploaded_file.name)[0]
-      output_filename = f"{original_name}.docx"
-
-      with tempfile.TemporaryDirectory() as temp_dir:
-        input_pdf = os.path.join(temp_dir, "input.pdf")
-        output_word = os.path.join(temp_dir, output_filename)
-
-        with open(input_pdf, "wb") as f:
-          f.write(uploaded_file.getbuffer())
-
-        cv = Converter(input_pdf)
-        cv.convert(output_word, start=0, end=None)
-        cv.close()
-
-        if not os.path.exists(output_word):
-          raise FileNotFoundError("Word file is not generated.")
-
-        with open(output_word, "rb") as f:
-          docx_bytes = f.read()
-
-    st.success("✅ Conversion successful!")
-    st.download_button(
-        label="📥 Download Word file",
-        data=docx_bytes,
-        file_name=output_filename,
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
-
-  except Exception as e:
-    st.error(f"❌ Error: {str(e)}")
-
-  finally:
-    st.session_state.processing = False
+res = ui.get_result("pdf2docx", uploaded)
+if res:
+    st.success(t("word_ok"))
+    ui.download(res)

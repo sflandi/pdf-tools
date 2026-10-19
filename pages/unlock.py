@@ -1,101 +1,34 @@
-import streamlit as st
-from PyPDF2 import PdfReader, PdfWriter
-from io import BytesIO
 import os
 
-st.set_page_config(page_title="Unlock PDF", layout="centered")
+import streamlit as st
 
-# ---------------------------
-# Session state
-# ---------------------------
-if "processing" not in st.session_state:
-    st.session_state.processing = False
+from pdftools import core, ui
+from pdftools.ui import t
 
-# ---------------------------
-# Back button
-# ---------------------------
-if st.button("⬅ Kembali ke Halaman Utama", disabled=st.session_state.processing):
-    st.switch_page("app.py")
+ui.header("unlock_title", "unlock_caption")
 
-st.markdown("---")
-st.title("🔓 Unlock PDF")
-st.caption("Remove password protection from PDF")
+uploaded = st.file_uploader(t("unlock_upload"), type=["pdf"])
+password = st.text_input(t("pdf_password"), type="password")
 
-# ---------------------------
-# Upload
-# ---------------------------
-uploaded_file = st.file_uploader(
-    "Upload protected PDF",
-    type=["pdf"],
-    disabled=st.session_state.processing
-)
+if st.button(t("unlock_button"), type="primary", disabled=not uploaded):
+    with ui.workdir() as wd, st.spinner(t("processing")):
+        try:
+            src = ui.save_upload(uploaded, wd)
+            out = os.path.join(wd, "result.pdf")
+            with ui.timed("unlock"):
+                was_locked = core.unlock(src, password, out)
+            ui.set_result("unlock", uploaded, bytes=ui.read_bytes(out),
+                          filename=f"{ui.stem(uploaded)}_unlocked.pdf", mime="application/pdf",
+                          was_locked=was_locked)
+        except core.PdfLocked as e:
+            st.error(t("err_invalid", msg=t(e.key)))
+        except Exception as e:
+            ui.show_error(e, "unlock")
 
-# ---------------------------
-# Password input
-# ---------------------------
-password = st.text_input(
-    "Password",
-    type="password",
-    disabled=st.session_state.processing
-)
-
-# ---------------------------
-# Button
-# ---------------------------
-unlock_clicked = st.button(
-    "🔓 Unlock PDF",
-    use_container_width=True,
-    disabled=st.session_state.processing or not uploaded_file
-)
-
-# ---------------------------
-# Logic
-# ---------------------------
-if unlock_clicked:
-    st.session_state.processing = True
-
-    try:
-        with st.spinner("⏳ Unlocking PDF..."):
-            reader = PdfReader(uploaded_file)
-
-            # cek apakah encrypted
-            if reader.is_encrypted:
-                if not password:
-                    raise ValueError("Password required")
-
-                result = reader.decrypt(password)
-
-                if result == 0:
-                    raise ValueError("Wrong password")
-            else:
-                st.info("ℹ️ PDF is not password protected")
-
-            writer = PdfWriter()
-
-            # copy semua halaman
-            for page in reader.pages:
-                writer.add_page(page)
-
-            # simpan ke memory
-            buffer = BytesIO()
-            writer.write(buffer)
-            buffer.seek(0)
-
-            # nama file
-            original_name = os.path.splitext(uploaded_file.name)[0]
-            output_filename = f"{original_name}_unlocked.pdf"
-
-        st.success("✅ PDF unlocked successfully!")
-
-        st.download_button(
-            "⬇ Download Unlocked PDF",
-            buffer,
-            file_name=output_filename,
-            mime="application/pdf"
-        )
-
-    except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-
-    finally:
-        st.session_state.processing = False
+res = ui.get_result("unlock", uploaded)
+if res:
+    if res["was_locked"]:
+        st.success(t("unlock_ok"))
+    else:
+        st.info(t("unlock_not_locked"))
+    ui.download(res)

@@ -1,67 +1,56 @@
 import streamlit as st
 
-st.set_page_config(page_title="PDF Tools", layout="centered")
+from pdftools import ui
+from pdftools.ui import t
 
-st.title("📄 PDF Tools")
-st.subheader("Choose your tool")
+st.set_page_config(page_title="PDF Tools", page_icon="📄", layout="centered")
+ui.language_selector()
+ui.require_auth()
 
-col1, col2 = st.columns(2)
-col3, col4 = st.columns(2)
-col5, col6 = st.columns(2)
-col7, col8 = st.columns(2)
-col9, col10 = st.columns(2)
-col11, col12 = st.columns(2)
-
-st.markdown("""
-<style>
-div.stButton > button {
-    height: 20px;
-    font-size: 22px;
-    border-radius: 12px;
+# section key -> [(page file, i18n key suffix, icon)]; titles are "nav_<key>", descriptions "desc_<key>"
+SECTIONS: dict[str, list[tuple[str, str, str]]] = {
+    "sec_format": [
+        ("pages/compress.py", "compress", "🗜"),
+        ("pages/pdf_image.py", "pdf2img", "🖼"),
+        ("pages/image.py", "img2pdf", "📷"),
+        ("pages/word.py", "word", "📝"),
+        ("pages/word_ocr.py", "ocrdocx", "🔎"),
+        ("pages/ocr_pdf.py", "ocrpdf", "🔤"),
+        ("pages/word_metadata.py", "office", "📄"),
+    ],
+    "sec_pages": [
+        ("pages/merger.py", "merge", "🔗"),
+        ("pages/splitter.py", "split", "✂"),
+        ("pages/organize.py", "organize", "🗂"),
+        ("pages/page_numbers.py", "numbers", "🔢"),
+        ("pages/watermark.py", "watermark", "💧"),
+    ],
+    "sec_security": [
+        ("pages/unlock.py", "unlock", "🔓"),
+        ("pages/protect.py", "protect", "🔒"),
+        ("pages/redact.py", "redact", "⬛"),
+        ("pages/metadata.py", "metadata", "🏷"),
+    ],
 }
-</style>
-""", unsafe_allow_html=True)
 
-with col1:
-    if st.button("🔗 PDF Merger", use_container_width=True):
-        st.switch_page("pages/merger.py")
+PAGES = {
+    section: [st.Page(path, title=t(f"nav_{key}"), icon=icon) for path, key, icon in items]
+    for section, items in SECTIONS.items()
+}
 
-with col2:
-    if st.button("✂️ PDF Splitter", use_container_width=True):
-        st.switch_page("pages/splitter.py")
 
-with col3:
-    if st.button("🗜 PDF Compress", use_container_width=True):
-        st.switch_page("pages/compress.py")
+def home() -> None:
+    st.title(t("home_title"))
+    st.caption(t("home_caption"))
+    for section, items in SECTIONS.items():
+        st.subheader(t(section))
+        cols = st.columns(2)
+        for idx, (page, (_, key, icon)) in enumerate(zip(PAGES[section], items)):
+            with cols[idx % 2].container(border=True):
+                st.page_link(page, label=f"**{t(f'nav_{key}')}**", icon=icon)
+                st.caption(t(f"desc_{key}"))
 
-with col4:
-    if st.button("🗜 PDF Compress PyMuPDF", use_container_width=True):
-        st.switch_page("pages/compress_pymupdf.py")
 
-with col5:
-    if st.button("🖼️ Image → PDF", use_container_width=True):
-        st.switch_page("pages/image.py")
-
-with col6:
-    if st.button("PDF → 🖼️ Image", use_container_width=True):
-        st.switch_page("pages/pdf_image.py")
-
-with col7:
-    if st.button("📄 PDF → Word", use_container_width=True):
-        st.switch_page("pages/word.py")
-
-with col8:
-    if st.button("📄 PDF → Word + OCR", use_container_width=True):
-        st.switch_page("pages/word_ocr.py")
-
-with col9:
-    if st.button("📄 PDF Metadata", use_container_width=True):
-        st.switch_page("pages/metadata.py")
-        
-with col10:
-    if st.button("📄 Word → PDF + metadata", use_container_width=True):
-        st.switch_page("pages/word_metadata.py")
-        
-with col11:
-    if st.button("� PDF Unlock", use_container_width=True):
-        st.switch_page("pages/unlock.py")
+nav = st.navigation({"": [st.Page(home, title=t("nav_home"), icon="🏠", default=True)],
+                     **{t(section): pages for section, pages in PAGES.items()}})
+nav.run()

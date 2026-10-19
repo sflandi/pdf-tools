@@ -1,13 +1,26 @@
 services:
   pdf-tools:
-    build:
-      context: .
-      dockerfile: Dockerfile
-
+    build: .
     container_name: pdf-tools
-
     ports:
       - "8502:8502"
-
     environment:
-      - TZ=Asia/Jakarta
+      TZ: Asia/Jakarta
+      # how many heavy jobs (compression, OCR, conversion) may run at the same time
+      PDFTOOLS_MAX_JOBS: "2"
+      # set in a .env file (never commit it) to enable the login screen: PDFTOOLS_PASSWORD=...
+      PDFTOOLS_PASSWORD: ${PDFTOOLS_PASSWORD:-}
+      # default UI language: en or id
+      PDFTOOLS_LANG: en
+    restart: unless-stopped
+    mem_limit: 6g
+    cpus: "4"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

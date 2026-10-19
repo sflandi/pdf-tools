@@ -1,0 +1,16 @@
+[server]
+# PDFs of several hundred MB (Streamlit's default limit is 200 MB)
+maxUploadSize = 1000
+enableXsrfProtection = true
+
+[browser]
+# don't send usage statistics to Streamlit (office documents are internal)
+gatherUsageStats = false
+
+[client]
+# hide the developer menu and error details (stack traces) from users
+toolbarMode = "viewer"
+showErrorDetails = "none"
+
+[runner]
+magicEnabled = false

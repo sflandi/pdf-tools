@@ -1,53 +1,39 @@
-import streamlit as st
-from PyPDF2 import PdfMerger
-import tempfile
 import os
 
-if st.button("⬅ Home"):
-    st.switch_page("app.py")
+import streamlit as st
 
-st.markdown("---")
+from pdftools import core, ui
+from pdftools.ui import t
 
-st.set_page_config(page_title="PDF Merger", layout="centered")
+ui.header("merge_title", "merge_caption")
 
-st.title("📄 PDF Merger")
-st.write("Upload multiple PDF files and merge them into one.")
+uploads = st.file_uploader(t("merge_upload"), type=["pdf"], accept_multiple_files=True)
 
-uploaded_files = st.file_uploader(
-    "Upload PDF files",
-    type="pdf",
-    accept_multiple_files=True
-)
+order: list = []
+if uploads:
+    st.write(t("merge_order"))
+    ranks = {}
+    for i, u in enumerate(uploads):
+        c1, c2 = st.columns([1, 5])
+        ranks[i] = c1.number_input(t("order"), 1, len(uploads), i + 1, key=f"rank_{i}_{u.name}",
+                                   label_visibility="collapsed")
+        c2.write(f"{u.name} ({u.size / 1e6:.1f} MB)")
+    order = [uploads[i] for i in sorted(ranks, key=lambda i: (ranks[i], i))]
+bookmark = st.checkbox(t("bookmark_per_file"), value=True)
 
-if uploaded_files:
-    st.write("### Files to merge:")
-    for file in uploaded_files:
-        st.write(f"- {file.name}")
-
-    if st.button("Merge PDF"):
-        merger = PdfMerger()
-
+if st.button(t("merge_button"), type="primary", disabled=not uploads or len(uploads) < 2):
+    with ui.workdir() as wd, st.spinner(t("merging")):
         try:
-            for pdf in uploaded_files:
-                merger.append(pdf)
-
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                merger.write(tmp_file.name)
-                merged_path = tmp_file.name
-
-            merger.close()
-
-            with open(merged_path, "rb") as f:
-                st.download_button(
-                    label="⬇ Download Merged PDF",
-                    data=f,
-                    file_name="merged.pdf",
-                    mime="application/pdf"
-                )
-
+            paths = [ui.save_upload(u, wd, f"in_{i:03d}.pdf") for i, u in enumerate(order)]
+            out = os.path.join(wd, "merged.pdf")
+            with ui.timed("merge", files=len(paths)):
+                pages = core.merge(paths, [u.name for u in order], out, bookmark)
+            ui.set_result("merge", uploads, bytes=ui.read_bytes(out), filename="merged.pdf",
+                          mime="application/pdf", pages=pages)
         except Exception as e:
-            st.error(f"Error: {e}")
+            ui.show_error(e, "merge")
 
-        finally:
-            if os.path.exists(merged_path):
-                os.remove(merged_path)
+res = ui.get_result("merge", uploads)
+if res:
+    st.success(t("merge_ok", pages=res["pages"]))
+    ui.download(res)

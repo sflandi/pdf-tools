@@ -1,130 +1,112 @@
-import streamlit as st
-import subprocess
-import tempfile
 import os
-from io import BytesIO
 
-if st.button("⬅ Home"):
-    st.switch_page("app.py")
+import streamlit as st
 
-st.markdown("---")
+from pdftools import compress as engine
+from pdftools import core, ui
+from pdftools.ui import t
 
-st.set_page_config(page_title="PDF Compress", layout="centered")
-st.title("🗜 PDF Compress (Ghostscript)")
+ui.header("compress_title", "compress_caption")
 
-# ---------------------------
-# Session state
-# ---------------------------
-if "processing" not in st.session_state:
-    st.session_state.processing = False
+uploaded = st.file_uploader(t("upload_pdf"), type=["pdf"])
 
-# ---------------------------
-# Upload
-# ---------------------------
-uploaded_file = st.file_uploader(
-    "Upload PDF file",
-    type=["pdf"],
-    disabled=st.session_state.processing
-)
+target_mb = st.number_input(t("target_mb"), min_value=0.5, max_value=1000.0, value=10.0, step=0.5)
+FALLBACKS = ["single", "split", "stop"]
+fallback = st.radio(t("fallback_label"), FALLBACKS, format_func=lambda k: t(f"fallback_{k}"))
+gray = st.checkbox(t("gray_label"), help=t("gray_help"))
 
-# ---------------------------
-# Presets
-# ---------------------------
-PDF_PRESETS = {
-    "High compression (smallest size)": "/screen",
-    "Medium compression (recommended)": "/ebook",
-    "Print quality": "/printer",
-    "High quality (prepress)": "/prepress"
-}
 
-preset_label = st.selectbox(
-    "Compression level",
-    list(PDF_PRESETS.keys()),
-    index=1,
-    disabled=st.session_state.processing
-)
+def label_text(label: str) -> str:
+    return t("label_original") if label == engine.ORIGINAL_LABEL else label
 
-# ---------------------------
-# Button
-# ---------------------------
-compress_clicked = st.button(
-    "🗜 Compress PDF",
-    disabled=st.session_state.processing or not uploaded_file
-)
 
-# ---------------------------
-# Compress logic
-# ---------------------------
-if compress_clicked:
-    st.session_state.processing = True
+if st.button(t("compress_button"), type="primary", disabled=not uploaded):
+    with ui.workdir() as wd, st.status(t("preparing"), expanded=True) as status:
+        try:
+            src = ui.save_upload(uploaded, wd)
+            info = engine.analyze(src)
+            if info.encrypted:
+                raise core.PdfLocked("pdf_locked")
+            st.write(
+                t("pdf_summary", pages=info.pages, mb=f"{info.file_size / 1e6:.1f}", images=info.image_count,
+                  share=f"{info.image_share:.0%}") + (t("scanned_suffix") if info.looks_scanned else "")
+            )
+            bar = st.progress(0.0)
 
-    try:
-        with st.spinner("⏳ Compressing PDF, please wait..."):
-            # Ambil nama file asli TANPA .pdf
-            original_name = os.path.splitext(uploaded_file.name)[0]
-            output_filename = f"{original_name}_compressed.pdf"
-            # === TEMP DIR START ===
-            with tempfile.TemporaryDirectory() as tmpdir:
+            def progress(key: str, frac: float, **params) -> None:
+                status.update(label=t(key, **params))
+                bar.progress(min(1.0, frac))
 
-                input_pdf = os.path.join(tmpdir, "input.pdf")
-                output_pdf = os.path.join(tmpdir, output_filename)
+            target = int(target_mb * 1e6)
+            with ui.heavy_job(status), ui.timed("compress", mb=round(info.file_size / 1e6, 1)):
+                result = engine.compress_to_target(
+                    src, target, wd, gray=gray, aggressive=(fallback == "single"),
+                    progress=progress, analysis=info,
+                )
+                parts: list[str] = []
+                oversize: list[int] = []
+                if fallback == "split" and not result.met_target:
+                    status.update(label=t("splitting_to_target"))
+                    parts, oversize = core.split_by_size(result.best.path, target, wd, ui.stem(uploaded))
+            bar.progress(1.0)
+            status.update(label=t("done"), state="complete", expanded=False)
 
-                # Save uploaded file
-                with open(input_pdf, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+            preview_page = engine.pick_preview_page(src)
+            data = dict(
+                original=result.original_size, label=result.best.label, met=result.met_target,
+                kept_original=result.kept_original, target=target_mb,
+                attempts=[(a.label, a.size, a.seconds) for a in result.attempts],
+                preview_page=preview_page,
+                before=engine.render_preview(src, preview_page),
+                after=engine.render_preview(result.best.path, preview_page),
+            )
+            if parts:
+                zip_path = os.path.join(wd, "result.zip")
+                core.zip_files(parts, zip_path)
+                data.update(
+                    bytes=ui.read_bytes(zip_path), filename=f"{ui.stem(uploaded)}_compressed.zip",
+                    mime="application/zip", size=result.best.size,
+                    parts=[(os.path.basename(p), os.path.getsize(p)) for p in parts], oversize=oversize,
+                )
+            else:
+                data.update(
+                    bytes=ui.read_bytes(result.best.path), filename=f"{ui.stem(uploaded)}_compressed.pdf",
+                    mime="application/pdf", size=result.best.size,
+                )
+            ui.set_result("compress", uploaded, **data)
+        except Exception as e:
+            status.update(label=t("failed"), state="error")
+            ui.show_error(e, "compress")
 
-                original_size = os.path.getsize(input_pdf)
+res = ui.get_result("compress", uploaded)
+if res:
+    c1, c2, c3 = st.columns(3)
+    c1.metric(t("metric_original"), f"{res['original'] / 1e6:.1f} MB")
+    c2.metric(t("metric_result"), f"{res['size'] / 1e6:.1f} MB")
+    c3.metric(t("metric_saved"), f"{100 - res['size'] / res['original'] * 100:.0f}%")
 
-                # Ghostscript command
-                command = [
-                    "gs",
-                    "-sDEVICE=pdfwrite",
-                    "-dCompatibilityLevel=1.4",
-                    f"-dPDFSETTINGS={PDF_PRESETS[preset_label]}",
-                    "-dNOPAUSE",
-                    "-dQUIET",
-                    "-dBATCH",
-                    f"-sOutputFile={output_pdf}",
-                    input_pdf
-                ]
+    label = label_text(res["label"])
+    if res.get("parts"):
+        st.success(t("split_to_target_ok", n=len(res["parts"]), target=f"{res['target']:g}", label=label))
+        for name, size in res["parts"]:
+            st.write(f"- {name}: {size / 1e6:.2f} MB")
+        if res["oversize"]:
+            st.warning(t("oversize_pages", pages=", ".join(map(str, res["oversize"]))))
+    elif res["kept_original"]:
+        st.info(t("kept_original"))
+    elif res["met"]:
+        st.success(t("target_met", target=f"{res['target']:g}", label=label))
+    else:
+        st.warning(t("target_missed", target=f"{res['target']:g}", label=label))
 
-                subprocess.run(command, check=True)
+    ui.download(res)
 
-                if not os.path.exists(output_pdf):
-                    raise FileNotFoundError("Compressed PDF not generated")
+    st.subheader(t("compare_title", page=res["preview_page"] + 1))
+    st.caption(t("compare_caption"))
+    b1, b2 = st.columns(2)
+    b1.image(res["before"], caption=t("before"), width="stretch")
+    b2.image(res["after"], caption=t("after"), width="stretch")
 
-                compressed_size = os.path.getsize(output_pdf)
-
-                # 🔥 CRITICAL FIX:
-                # Read file into memory BEFORE temp dir is destroyed
-                with open(output_pdf, "rb") as f:
-                    pdf_bytes = f.read()
-
-            # === TEMP DIR END (SAFE) ===
-
-        # ---------------------------
-        # UI Output (AFTER tempdir)
-        # ---------------------------
-        st.success("✅ Compression successful!")
-        st.write(f"📄 Original size: **{original_size / 1024:.2f} KB**")
-        st.write(f"🗜 Compressed size: **{compressed_size / 1024:.2f} KB**")
-        st.write(
-            f"📉 Reduction: **{100 - (compressed_size / original_size * 100):.1f}%**"
-        )
-
-        st.download_button(
-            "⬇ Download Compressed PDF",
-            pdf_bytes,
-            file_name=output_filename,
-            mime="application/pdf"
-        )
-
-    except subprocess.CalledProcessError as e:
-        st.error("❌ Ghostscript failed")
-        st.code(" ".join(e.cmd))
-
-    except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-
-    finally:
-        st.session_state.processing = False
+    with st.expander(t("attempt_details")):
+        for att_label, size, secs in res["attempts"]:
+            st.write(f"- {label_text(att_label)}: {size / 1e6:.2f} MB ({secs:.0f} {t('seconds')})")

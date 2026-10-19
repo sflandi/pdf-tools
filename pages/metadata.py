@@ -1,129 +1,47 @@
-import streamlit as st
-from PyPDF2 import PdfReader, PdfWriter
-from io import BytesIO
 import os
 
-st.set_page_config(page_title="Edit PDF Metadata", layout="centered")
+import streamlit as st
 
-# ---------------------------
-# Session state
-# ---------------------------
-if "processing" not in st.session_state:
-    st.session_state.processing = False
+from pdftools import core, ui
+from pdftools.ui import t
 
-# ---------------------------
-# Back button
-# ---------------------------
-if st.button("⬅ Kembali ke Halaman Utama", disabled=st.session_state.processing):
-    st.switch_page("app.py")
+ui.header("metadata_title", "metadata_caption")
 
-st.markdown("---")
-st.title("📝 Edit PDF Metadata")
-st.caption("Modify Title, Author, Subject, etc.")
+uploaded = st.file_uploader(t("upload_pdf"), type=["pdf"])
 
-# ---------------------------
-# Upload
-# ---------------------------
-uploaded_file = st.file_uploader(
-    "Upload PDF file",
-    type=["pdf"],
-    disabled=st.session_state.processing
-)
+if uploaded:
+    cache = ui.get_result("meta_read", uploaded)
+    if not cache:
+        with ui.workdir() as wd:
+            try:
+                meta, has_xmp = core.read_metadata(ui.save_upload(uploaded, wd))
+                ui.set_result("meta_read", uploaded, meta=meta, has_xmp=has_xmp)
+            except Exception as e:
+                ui.show_error(e, "metadata")
+                st.stop()
+        cache = ui.get_result("meta_read", uploaded)
+    if cache["has_xmp"]:
+        st.caption(t("meta_xmp_note"))
 
-if uploaded_file:
-    reader = PdfReader(uploaded_file)
+    mode = st.radio(t("action"), ["edit", "strip"], horizontal=True, format_func=lambda m: t(f"meta_{m}"))
+    new_meta = {}
+    if mode == "edit":
+        for k in core.META_FIELDS:
+            new_meta[k] = st.text_input(t(f"meta_{k}"), cache["meta"].get(k, ""), key=f"meta_{k}")
 
-    # Ambil metadata lama (jika ada)
-    meta = reader.metadata or {}
+    if st.button(t("save"), type="primary"):
+        with ui.workdir() as wd, st.spinner(t("saving")):
+            try:
+                src = ui.save_upload(uploaded, wd)
+                out = os.path.join(wd, "result.pdf")
+                with ui.timed("metadata", strip=mode == "strip"):
+                    core.write_metadata(src, out, new_meta, strip_all=mode == "strip")
+                ui.set_result("metadata", uploaded, bytes=ui.read_bytes(out),
+                              filename=f"{ui.stem(uploaded)}_metadata.pdf", mime="application/pdf")
+            except Exception as e:
+                ui.show_error(e, "metadata")
 
-    def get_meta(key):
-        return meta.get(key, "") if meta.get(key) else ""
-
-    def get_meta_safe(meta, key):
-        val = meta.get(key)
-
-        if val is None:
-            return ""
-
-        try:
-            # resolve IndirectObject
-            if hasattr(val, "get_object"):
-                val = val.get_object()
-
-            return str(val)
-        except:
-            return ""
-    # ---------------------------
-    # Form metadata
-    # ---------------------------
-    st.subheader("Edit Metadata")
-
-    # title = st.text_input("Title", get_meta("/Title"))
-    # author = st.text_input("Author", get_meta("/Author"))
-    # subject = st.text_input("Subject", get_meta("/Subject"))
-    # keywords = st.text_input("Keywords", get_meta("/Keywords"))
-    # creator = st.text_input("Creator", get_meta("/Creator"))
-    # producer = st.text_input("Producer", get_meta("/Producer"))
-    
-    title = st.text_input("Title", get_meta_safe(meta, "/Title"))
-    author = st.text_input("Author", get_meta_safe(meta, "/Author"))
-    subject = st.text_input("Subject", get_meta_safe(meta, "/Subject"))
-    keywords = st.text_input("Keywords", get_meta_safe(meta, "/Keywords"))
-    creator = st.text_input("Creator", get_meta_safe(meta, "/Creator"))
-    producer = st.text_input("Producer", get_meta_safe(meta, "/Producer"))
-
-    # ---------------------------
-    # Button
-    # ---------------------------
-    save_clicked = st.button(
-        "💾 Save Metadata",
-        use_container_width=True,
-        disabled=st.session_state.processing
-    )
-
-    if save_clicked:
-        st.session_state.processing = True
-
-        try:
-            with st.spinner("⏳ Updating metadata..."):
-                writer = PdfWriter()
-
-                # copy semua halaman
-                for page in reader.pages:
-                    writer.add_page(page)
-
-                # set metadata baru
-                new_metadata = {
-                    "/Title": title,
-                    "/Author": author,
-                    "/Subject": subject,
-                    "/Keywords": keywords,
-                    "/Creator": creator,
-                    "/Producer": producer,
-                }
-
-                writer.add_metadata(new_metadata)
-
-                # simpan ke memory
-                output_buffer = BytesIO()
-                writer.write(output_buffer)
-                output_buffer.seek(0)
-
-                # nama file output
-                original_name = os.path.splitext(uploaded_file.name)[0]
-                output_filename = f"{original_name}_metadata.pdf"
-
-            st.success("✅ Metadata updated successfully!")
-
-            st.download_button(
-                "⬇ Download PDF",
-                output_buffer,
-                file_name=output_filename,
-                mime="application/pdf"
-            )
-
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
-
-        finally:
-            st.session_state.processing = False
+res = ui.get_result("metadata", uploaded)
+if res:
+    st.success(t("meta_ok"))
+    ui.download(res)

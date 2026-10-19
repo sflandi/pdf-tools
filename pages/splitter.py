@@ -1,51 +1,52 @@
+import os
+
 import streamlit as st
-from PyPDF2 import PdfReader, PdfWriter
-from io import BytesIO
-import zipfile
 
-if st.button("⬅ Home"):
-    st.switch_page("app.py")
+from pdftools import core, ui
+from pdftools.ui import t
 
-st.markdown("---")
+ui.header("split_title", "split_caption")
 
-st.set_page_config(page_title="PDF Splitter", layout="centered")
-st.title("✂️ PDF Splitter → ZIP")
+uploaded = st.file_uploader(t("upload_pdf"), type=["pdf"])
+MODES = ["every", "ranges", "size"]
+mode = st.radio(t("split_mode"), MODES, format_func=lambda k: t(f"split_{k}"))
+if mode == "every":
+    n = st.number_input(t("pages_per_file"), 1, 10_000, 1)
+elif mode == "ranges":
+    spec = st.text_area(t("ranges_input"), "1-3\n4-")
+else:
+    max_mb = st.number_input(t("max_mb_per_file"), 0.5, 1000.0, 10.0, 0.5)
 
-uploaded_file = st.file_uploader(
-    "Upload a PDF file",
-    type="pdf"
-)
+if st.button(t("split_button"), type="primary", disabled=not uploaded):
+    with ui.workdir() as wd, st.spinner(t("splitting")):
+        try:
+            src = ui.save_upload(uploaded, wd)
+            base = ui.stem(uploaded)
+            oversize: list[int] = []
+            with ui.timed("split", mode=mode):
+                if mode == "every":
+                    parts = core.split_every(src, int(n), wd, base)
+                elif mode == "ranges":
+                    doc = core.open_pdf(src)
+                    groups = core.parse_groups(spec, doc.page_count)
+                    doc.close()
+                    parts = core.split_groups(src, groups, wd, base)
+                else:
+                    parts, oversize = core.split_by_size(src, int(max_mb * 1e6), wd, base)
+            zip_path = os.path.join(wd, "result.zip")
+            core.zip_files(parts, zip_path)
+            ui.set_result("split", uploaded, bytes=ui.read_bytes(zip_path), filename=f"{base}_split.zip",
+                          mime="application/zip", count=len(parts), oversize=oversize,
+                          sizes=[(os.path.basename(p), os.path.getsize(p)) for p in parts[:50]])
+        except Exception as e:
+            ui.show_error(e, "split")
 
-if uploaded_file:
-    reader = PdfReader(uploaded_file)
-    total_pages = len(reader.pages)
-    base_name = uploaded_file.name.rsplit(".", 1)[0]
-
-    st.success(f"Total pages detected: {total_pages}")
-
-    if st.button("Split PDF to ZIP"):
-        zip_buffer = BytesIO()
-
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for i, page in enumerate(reader.pages, start=1):
-                writer = PdfWriter()
-                writer.add_page(page)
-
-                pdf_buffer = BytesIO()
-                writer.write(pdf_buffer)
-                pdf_buffer.seek(0)
-
-                file_name = f"{base_name}_page_{i:02d}.pdf"
-                zip_file.writestr(
-                    file_name,
-                    pdf_buffer.read()
-                )
-
-        zip_buffer.seek(0)
-
-        st.download_button(
-            label="⬇ Download ZIP",
-            data=zip_buffer,
-            file_name="split_pages.zip",
-            mime="application/zip"
-        )
+res = ui.get_result("split", uploaded)
+if res:
+    st.success(t("split_ok", n=res["count"]))
+    if res["oversize"]:
+        st.warning(t("split_oversize", pages=", ".join(map(str, res["oversize"]))))
+    with st.expander(t("file_list")):
+        for name, size in res["sizes"]:
+            st.write(f"- {name}: {size / 1e6:.2f} MB")
+    ui.download(res, t("download_zip"))
